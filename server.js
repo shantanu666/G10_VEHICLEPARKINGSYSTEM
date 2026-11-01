@@ -1,3 +1,4 @@
+
 require("dotenv").config();
 
 const express = require("express");
@@ -17,9 +18,10 @@ const parkingRoutes = require("./src/modules/parking/parking.routes");
 const subscriptionRoutes = require("./src/modules/subscription/subscription.routes");
 const subscriptionService = require("./src/modules/subscription/subscription.service");
 
+// FR-8: Review module
+const reviewRoutes = require("./src/modules/review/review.routes");
 
 const app = express();
-
 
 app.use(cors());
 app.use(express.json());
@@ -31,6 +33,7 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// Existing module routes
 app.use("/api/reservations", reservationRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/payments", paymentRoutes);
@@ -41,8 +44,11 @@ app.use("/api/slots", slotRoutes);
 app.use("/api/parking", parkingRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
 
+// FR-8: Review routes
+app.use("/api/reviews", reviewRoutes);
 
 const PORT = process.env.PORT || 5000;
+
 const MONGO_URI =
   process.env.MONGO_URI ||
   "mongodb://127.0.0.1:27017/g10_vehicle_parking";
@@ -51,16 +57,20 @@ async function startServer() {
   try {
     await mongoose.connect(MONGO_URI);
     console.log("MongoDB connected");
+
     const configuredInterval = Number(
       process.env.OVERSTAY_CHECK_INTERVAL_MS || 60_000
     );
+
     const overstayInterval =
       Number.isFinite(configuredInterval) && configuredInterval > 0
         ? configuredInterval
         : 60_000;
+
     const detectOverstays = async () => {
       try {
         const result = await overstayService.detectOverstays();
+
         if (result.detected > 0) {
           console.log(`Detected ${result.detected} overdue reservation(s)`);
         }
@@ -68,9 +78,12 @@ async function startServer() {
         console.error("Overstay detection failed:", error.message);
       }
     };
+
     const sendReminders = async () => {
       try {
-        const result = await notificationReminders.sendReservationReminders();
+        const result =
+          await notificationReminders.sendReservationReminders();
+
         if (result.upcoming + result.expiring > 0) {
           console.log(
             `Sent ${result.upcoming} upcoming and ${result.expiring} expiry reminder(s)`
@@ -93,9 +106,13 @@ async function startServer() {
         console.error("Subscription expiry failed:", error.message);
       }
     };
+
+    // Start all background schedulers
     setInterval(detectOverstays, overstayInterval).unref();
     setInterval(sendReminders, overstayInterval).unref();
     setInterval(expireSubscriptionRecords, overstayInterval).unref();
+
+    // Run each job once when the server starts
     void detectOverstays();
     void sendReminders();
     void expireSubscriptionRecords();
